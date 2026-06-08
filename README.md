@@ -1,78 +1,103 @@
-# PlayDead
+# PlayDead 💀🌹
 
-Natural-language control for Grateful Dead tapes on archive.org.
+A Grateful Dead time machine you talk to in plain English. PlayDead is a
+**Claude Code skill** that searches [archive.org](https://archive.org)'s
+legendary GratefulDead collection, picks the best recording, and streams it on
+your **local machine** — driven entirely by natural language.
 
-> *"Play the best tape from May 1977"* → Claude picks the date → [deadstream]
-> fetches the highest-rated recording and plays it.
+> "Play the Cornell show." · "Put on a soundboard from 8/27/72." ·
+> "What's the best-rated '77 tape?" · "Next song." · "What's playing?"
 
-PlayDead is the glue between two pieces:
-
-| Layer | What it does | Library |
-|-------|--------------|---------|
-| **Playback** | Browse the GD collection on archive.org, score tapes, stream audio | [`deadstream`](https://github.com/eichblatt/deadstream) (the `timemachine` package) |
-| **Language** | Turn "best tape from May '77" into a concrete date + action | Claude (Anthropic API) via tool use |
-
-The language layer never streams audio and the playback layer never talks to
-an LLM. They meet at four tools (`list_shows`, `play_show`, `playback_control`,
-`now_playing`) that Claude calls. That seam is the whole project.
-
-## How it fits together
+## How it works
 
 ```
-You ──"play the best tape from May 1977"──▶ agent.py (Claude + tools)
-                                                │
-                          list_shows(1977, 5) ──┤  Claude reasons over
-                          play_show("1977-05-08")  ratings & venues,
-                                                │   then acts
-                                                ▼
-                                          player.py (DeadStream adapter)
-                                                │
-                                                ▼
-                              timemachine.GDArchive / GDPlayer ──▶ archive.org
+You (natural language)
+      │
+      ▼
+Claude  ──reads──▶  .claude/skills/playdead/SKILL.md   (NL → command mapping)
+      │
+      ▼
+playdead.py  ──▶  archive.org  (search + best-tape ranking + stream URLs)
+      │
+      ▼
+local audio player (mpv / ffplay / vlc)  ──▶  🔊
 ```
 
-## Layout
+Claude does the language understanding; the bundled `playdead.py` CLI does the
+deterministic work. "Best tape" selection favors **soundboards and matrices**
+over audience recordings, then weighs ratings and popularity — the way a
+Deadhead would choose.
 
-```
-playdead/
-  player.py    # DeadStream adapter — wraps timemachine's GDArchive + GDPlayer
-  tools.py     # Anthropic tool schemas + dispatch onto a DeadStream instance
-  agent.py     # The natural-language layer: a manual Claude tool-use loop
-  cli.py       # Interactive REPL ("> play the best tape from May 1977")
-```
+## Requirements
 
-## Quick start
+- **Python 3.8+** — standard library only, no `pip install` needed.
+- **An audio player** (install one):
+  - **`mpv`** *(recommended)* — enables pause / next / previous / status.
+    `brew install mpv` · `sudo apt install mpv`
+  - or `ffplay` (from ffmpeg) / `cvlc` (VLC) — support play / next / prev /
+    stop, but not pause.
+- **Network access to archive.org.**
+
+## Using it with Claude Code
+
+Once the skill is on your skill path (it lives in `.claude/skills/playdead/`),
+just ask Claude to play the Dead. Claude invokes the skill and the right
+commands automatically.
+
+## Using the CLI directly
 
 ```bash
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...
-python -m playdead.cli
+cd .claude/skills/playdead/scripts
+
+python3 playdead.py play "cornell"               # famous-show nickname
+python3 playdead.py play "1977-05-08"            # by date
+python3 playdead.py play "Veneta 1972 soundboard"  # free text + lineage
+python3 playdead.py search "1972" --json         # browse, best-first
+python3 playdead.py best "1970-05-02"            # just resolve the best tape
+python3 playdead.py show "cornell"               # details + setlist
+
+python3 playdead.py status      # what's playing
+python3 playdead.py next        # skip
+python3 playdead.py prev        # back
+python3 playdead.py pause       # toggle (mpv)
+python3 playdead.py queue       # the loaded setlist
+python3 playdead.py stop
 ```
 
+A **target** can be a date (`1977-05-08`, `5/8/77`), an archive.org identifier
+(`gd1977-05-08.sbd.hicks.4982.sbeok.shnf`), a nickname (`cornell`, `veneta`),
+or free text. Add `--json` to any command for machine-readable output.
+
+Playback runs in the background; state lives in `~/.playdead/` (override with
+`$PLAYDEAD_HOME`), so `play` and later `next`/`status`/`stop` share one session.
+
+## Project layout
+
 ```
-🌹⚡💀 PlayDead — ask for a show
-> play the best tape from May 1977
-  ▶ Cornell '77 — Barton Hall, Cornell University, Ithaca, NY (1977-05-08)
-    avg rating 4.96 · the famous one
-> pause
-  ⏸ paused
-> what's playing?
-  Scarlet Begonias → Fire on the Mountain
+.claude/skills/playdead/
+  SKILL.md              # what Claude reads: when to use + NL → command mapping
+  scripts/
+    playdead.py         # CLI entrypoint (search/best/show/play/transport)
+    archive.py          # archive.org search, best-tape ranking, playlists
+    player.py           # local playback: mpv (IPC) + sequential fallback
+    state.py            # background-playback state under ~/.playdead/
+    famous_shows.py     # nickname → date/venue lookups
+tests/
+  test_playdead.py      # offline tests for the non-network logic
 ```
 
-## A note on `deadstream` / `timemachine`
-
-`deadstream` was built for a Raspberry-Pi "time machine" appliance, so its
-`setup.py` pulls in hardware deps (`RPi.GPIO`, `gpiozero`, `adafruit-blinka`).
-The two modules PlayDead actually touches — `Archivary` (metadata/scoring) and
-`GD` (an `mpv`-backed player) — don't need the GPIO stack, but importing the
-package can. On a non-Pi machine, install just what you need:
+## Tests
 
 ```bash
-pip install python-mpv requests tenacity   # runtime deps of GD + Archivary
-pip install "git+https://github.com/eichblatt/deadstream.git#egg=timemachine"
+python3 -m unittest discover -s tests -v
 ```
 
-`player.py` isolates every `timemachine` call behind one adapter class, so if
-you'd rather drive the archive.org API and `mpv` directly (no GPIO at all), you
-only reimplement `player.py` — `tools.py` and `agent.py` are untouched.
+Covers date parsing, best-tape ranking, playlist building, nickname
+resolution, and state persistence — the parts that don't need the network or a
+player.
+
+## Notes
+
+- Audio streams from archive.org; PlayDead never downloads whole shows to disk.
+- One show plays at a time — `play` stops anything already playing.
+- pause/seek require `mpv`.

@@ -1,9 +1,0 @@
-# Language layer
-anthropic>=0.40
-
-# Playback layer (deadstream). The PyPI/Pi package is `timemachine`; off a Pi,
-# install its non-GPIO runtime deps plus the library from git. See README.
-python-mpv>=1.0
-requests>=2.28
-tenacity>=8.0
-# timemachine @ git+https://github.com/eichblatt/deadstream.git

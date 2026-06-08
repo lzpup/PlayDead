@@ -1,8 +1,5 @@
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-env/
-*.egg-info/
+.playdead/
+*.sock
 .DS_Store
-.env
