@@ -20,6 +20,7 @@ Reference for the underlying API:
 
 from __future__ import annotations
 
+import sys
 from dataclasses import asdict, dataclass
 
 
@@ -55,7 +56,16 @@ class DeadStream:
     @property
     def archive(self):
         if self._archive is None:
-            from timemachine import Archivary
+            from timemachine import Archivary, config
+
+            # timemachine reads options (e.g. PLAY_LOSSLESS) from config.optd,
+            # which is empty until something populates it. Use its defaults.
+            if not config.optd:
+                # Off a Pi (e.g. macOS) there's no /etc/os-release, so
+                # os_version is None and default_options() can't compare it.
+                if config.os_version is None:
+                    config.os_version = 0
+                config.optd = config.default_options()
 
             # Loads the tape index for the collection (network on first run).
             self._archive = Archivary.GDArchive(collection_list=[self.collection])
@@ -65,6 +75,13 @@ class DeadStream:
     def _gd_module(self):
         if self._gd is None:
             from timemachine import GD
+
+            # GDPlayer() runs `sudo service pulseaudio stop/restart` on every
+            # init — meant for the Pi appliance. Elsewhere it's a password
+            # prompt (or failure) per show, so make those calls no-ops.
+            if not sys.platform.startswith("linux"):
+                GD.GDPlayer.stop_pulse_audio = lambda self: None
+                GD.GDPlayer.restart_pulse_audio = lambda self: None
 
             self._gd = GD
         return self._gd
